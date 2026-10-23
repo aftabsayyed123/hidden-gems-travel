@@ -1,0 +1,411 @@
+{
+  "name": "Hidden Gems Travel - E2E Test Runner",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Run Full Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "id": "run-full-test"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "name": "Daily Smoke Test",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        380
+      ],
+      "id": "daily-smoke-test",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m1",
+              "name": "strict",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Mark Scheduled",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        380
+      ],
+      "id": "mark-scheduled"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "base_url",
+              "value": "http://localhost:5678",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "drivers_chat_id",
+              "value": "YOUR_DRIVERS_CHAT_ID",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "test_date",
+              "value": "={{ $now.plus({days: 1}).toFormat('yyyy-MM-dd') }}",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "strict",
+              "value": "={{ $json.strict || false }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Test Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        200
+      ],
+      "id": "test-settings"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Test Settings').item.json.base_url }}/webhook/hgt-whatsapp",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { from: \"e2e-test\", text: \"Ciao! Quali tour avete e quanto costano?\" } }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "name": "T1 Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        200
+      ],
+      "id": "t1-agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Test Settings').item.json.base_url }}/webhook/hgt-create-booking",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { tour_id: 'sunset', date: $('Test Settings').item.json.test_date, time: '18:00', people: 2, customer_name: 'E2E Test' } }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "name": "T2 Booking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        200
+      ],
+      "id": "t2-booking",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Test Settings').item.json.base_url }}/webhook/hgt-stripe-webhook",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { type: 'checkout.session.completed', data: { object: { amount_total: 9800, metadata: { booking_ref: $('T2 Booking').item.json.booking_reference, bokun_booking_id: 'BK-' + $('T2 Booking').item.json.booking_reference, tour_name: 'Sunset Viewpoints Tour', date: $('Test Settings').item.json.test_date, time: '18:00', people: '2', customer_name: 'E2E Test' } } } } }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "name": "T3 Stripe Paid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "t3-stripe-paid",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Test Settings').item.json.base_url }}/webhook/hgt-ledger",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { chat_id: $('Test Settings').item.json.drivers_chat_id, driver: 'E2E Test Driver', text: '/cash ' + $('T2 Booking').item.json.booking_reference + ' 98' } }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "name": "T5 Driver Cash Command",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        200
+      ],
+      "id": "t5-driver-cash-command",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 8,
+        "unit": "seconds"
+      },
+      "name": "Wait for Sheets",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        200
+      ],
+      "id": "wait-for-sheets",
+      "webhookId": "hgt-e2e-wait"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "name": "Read Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1760,
+        200
+      ],
+      "id": "read-jobs",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CashLedger",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "name": "Read Ledger",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1980,
+        200
+      ],
+      "id": "read-ledger",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\ndef first(name):\n    try:\n        return py(_(name).first().json) or {}\n    except Exception:\n        return {}\n\ndef all_rows(name):\n    try:\n        return [py(i.json) for i in _(name).all()]\n    except Exception:\n        return []\n\ncfg = first(\"Test Settings\")\nt1, t2, t3, t5 = first(\"T1 Agent\"), first(\"T2 Booking\"), first(\"T3 Stripe Paid\"), first(\"T5 Driver Cash Command\")\nref = t2.get(\"booking_reference\")\njobs = all_rows(\"Read Jobs\")\nledger = [py(i.json) for i in _input.all()]\n\nchecks = []\ndef check(part, name, ok, detail=\"\"):\n    checks.append({\"part\": part, \"test\": name, \"result\": \"PASS\" if ok else \"FAIL\", \"detail\": str(detail)[:160]})\n\nreply = str(t1.get(\"reply\") or \"\")\ncheck(\"Part 1\", \"AI agent answered the customer\", bool(reply) and \"error\" not in t1, reply or t1.get(\"error\"))\ncheck(\"Part 1\", \"Answer uses real tour prices (39/49/220)\", any(p in reply for p in (\"39\", \"49\", \"220\")), reply[:100])\n\ncheck(\"Part 2\", \"Booking created with reference\", bool(ref), ref or t2.get(\"error\"))\ncheck(\"Part 2\", \"Server-side price is correct (2 x 49 = 98)\", t2.get(\"amount_eur\") == 98, t2.get(\"amount_eur\"))\ncheck(\"Part 2\", \"Payment link returned\", bool(t2.get(\"payment_link\")), t2.get(\"payment_link\"))\ncheck(\"Part 2\", \"Stripe 'paid' webhook acknowledged\", t3.get(\"received\") is True, t3 or \"no response\")\n\njob = next((r for r in jobs if ref and r.get(\"BookingRef\") == ref), None)\ncheck(\"Part 3\", \"Paid job saved in 'Jobs' sheet\", job is not None, job.get(\"Status\") if job else \"row not found\")\ncheck(\"Part 3\", \"Job status is OPEN (waiting for a driver)\", bool(job) and str(job.get(\"Status\", \"\")).upper() == \"OPEN\", job.get(\"Status\") if job else \"\")\n\nrow = next((r for r in ledger if ref and r.get(\"BookingRef\") == ref and str(r.get(\"Method\")).lower() == \"cash\"), None)\ncheck(\"Part 4\", \"Cash payment written to 'CashLedger' sheet\", row is not None, row if row else \"row not found\")\ntry:\n    amt_ok = bool(row) and float(str(row.get(\"Amount\")).replace(\",\", \".\")) == 98.0\nexcept ValueError:\n    amt_ok = False\ncheck(\"Part 4\", \"Ledger amount is 98\", amt_ok, row.get(\"Amount\") if row else \"\")\n\nfailed = [x for x in checks if x[\"result\"] == \"FAIL\"]\nlines = [(\"✅\" if x[\"result\"] == \"PASS\" else \"❌\") + f\" {x['part']}: {x['test']}\" for x in checks]\nsummary = f\"E2E test {'PASSED' if not failed else 'FAILED'}: {len(checks) - len(failed)}/{len(checks)} checks OK (booking {ref})\"\n\nif failed and cfg.get(\"strict\"):\n    # scheduled run: raise so the Error Handler workflow emails you\n    raise Exception(summary + \" | failed: \" + \"; \".join(f\"{x['part']} - {x['test']}\" for x in failed))\n\nreturn [{\"json\": {\"summary\": summary, \"passed\": len(checks) - len(failed), \"failed\": len(failed),\n                  \"report\": \"\\n\".join(lines), \"checks\": checks, \"booking_ref\": ref}}]"
+      },
+      "name": "Build Test Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "id": "build-test-report"
+    },
+    {
+      "parameters": {
+        "content": "## One-click end-to-end test\nPlays a fake customer through ALL 4 parts and prints PASS/FAIL per check.\n1) Set base_url + drivers_chat_id in 'Test Settings'  2) Part 2 must be in demo_mode=true  3) all 4 workflows ACTIVE (production URLs)\nClick 'Test workflow'. Enable 'Daily Smoke Test' to run it every morning - a failure then triggers your Error Handler email.",
+        "height": 190,
+        "width": 640
+      },
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "note"
+    }
+  ],
+  "connections": {
+    "Run Full Test": {
+      "main": [
+        [
+          {
+            "node": "Test Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Smoke Test": {
+      "main": [
+        [
+          {
+            "node": "Mark Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Scheduled": {
+      "main": [
+        [
+          {
+            "node": "Test Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Settings": {
+      "main": [
+        [
+          {
+            "node": "T1 Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "T1 Agent": {
+      "main": [
+        [
+          {
+            "node": "T2 Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "T2 Booking": {
+      "main": [
+        [
+          {
+            "node": "T3 Stripe Paid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "T3 Stripe Paid": {
+      "main": [
+        [
+          {
+            "node": "T5 Driver Cash Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "T5 Driver Cash Command": {
+      "main": [
+        [
+          {
+            "node": "Wait for Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Sheets": {
+      "main": [
+        [
+          {
+            "node": "Read Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Jobs": {
+      "main": [
+        [
+          {
+            "node": "Read Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Ledger": {
+      "main": [
+        [
+          {
+            "node": "Build Test Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

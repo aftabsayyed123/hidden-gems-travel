@@ -1,0 +1,55 @@
+1
+00:00:00,200 --> 00:00:04,799
+Hidden Gems Travel: an AI assistant for bookings, payments, driver jobs and cash records, built in n8n with Python.
+
+2
+00:00:05,200 --> 00:00:10,800
+Eight n8n workflows work together. Python handles the business logic inside the Code nodes.
+
+3
+00:00:11,199 --> 00:00:18,800
+Part 1: customers write in five languages. The AI agent answers in the same language, using a tool for real tour data.
+
+4
+00:00:19,199 --> 00:00:25,800
+For the demo, a Telegram bot stands in for WhatsApp and talks to the same agent.
+
+5
+00:00:26,199 --> 00:00:34,799
+Part 2: Python validates the request and sets the price. The call to Bokun is signed with HMAC, then Stripe creates the payment link.
+
+6
+00:00:35,200 --> 00:00:42,799
+Part 3: after payment, drivers get Accept and Decline buttons. The first driver to accept gets the job.
+
+7
+00:00:43,200 --> 00:00:48,799
+Job status is stored in a Google Sheet: OPEN until a driver accepts, then ASSIGNED. All data shown here is random sample data.
+
+8
+00:00:49,200 --> 00:00:56,799
+Part 4: drivers type a command such as /cash with the booking and amount. Python parses it and adds a ledger row.
+
+9
+00:00:57,200 --> 00:01:02,799
+The ledger only ever adds rows, and the bot replies with the cash each driver is holding.
+
+10
+00:01:03,200 --> 00:01:10,799
+If any workflow fails, the error handler classifies the problem, sets a severity and writes the business impact.
+
+11
+00:01:11,200 --> 00:01:18,799
+The owner gets this email: the failed node, the likely cause and step-by-step troubleshooting.
+
+12
+00:01:19,200 --> 00:01:24,799
+Every failure is also logged to an ErrorLog sheet, so there is a history to review.
+
+13
+00:01:25,200 --> 00:01:32,799
+A test runner plays a fake customer through all four parts and reports PASS or FAIL. It can run daily.
+
+14
+00:01:33,200 --> 00:01:38,799
+Built with n8n, Python, OpenAI, Stripe, Bokun, Telegram and Google Sheets. A demo project; swap Telegram for WhatsApp to go live.

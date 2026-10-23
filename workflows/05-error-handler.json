@@ -1,0 +1,203 @@
+{
+  "name": "Hidden Gems Travel - Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "id": "error-trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "alert_email",
+              "value": "you@example.com",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "from_email",
+              "value": "alerts@yourdomain.com",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Alert Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "id": "alert-settings"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\nimport re, html\nfrom datetime import datetime, timezone\n\nd = py(_input.first().json)\nex = d.get(\"execution\") or {}\ntrig = d.get(\"trigger\") or {}                      # set when a TRIGGER node itself failed\nwf = d.get(\"workflow\") or {}\nerr = ex.get(\"error\") or trig.get(\"error\") or {}\nerr_node = err.get(\"node\")\n\nmessage = str(err.get(\"message\") or \"Unknown error\")\nstack = str(err.get(\"stack\") or \"\")\nnode = ex.get(\"lastNodeExecuted\") or (err_node.get(\"name\") if isinstance(err_node, dict) else None) or (\"trigger\" if trig else \"unknown\")\nwf_name = str(wf.get(\"name\") or \"Unknown workflow\")\nblob = f\"{message} {node} {stack}\".lower()\n\nSEV = {\"MEDIUM\": 1, \"HIGH\": 2, \"CRITICAL\": 3}\n\nRULES = [\n {\"key\": \"auth\", \"title\": \"Authentication / credentials problem\", \"sev\": \"HIGH\",\n  \"pat\": [\"401\", \"403\", \"unauthorized\", \"forbidden\", \"invalid api key\", \"invalid_api_key\", \"authentication\", \"credentials\", \"token expired\", \"invalid_grant\"],\n  \"cause\": \"An API key or OAuth token is wrong, expired, revoked or lacks permission.\",\n  \"steps\": [\"Open the failed node and check which credential it uses.\",\n            \"Click 'Test' on that credential in n8n (Credentials page). Re-connect Google/Telegram OAuth if it fails.\",\n            \"OpenAI/Stripe: confirm the key is active in the provider dashboard and that you used the TEST key with test mode (or LIVE with live).\",\n            \"Bokun: confirm access key + secret key and that the account has API access enabled.\",\n            \"Re-run the execution from the n8n Executions list after fixing.\"]},\n {\"key\": \"rate_limit\", \"title\": \"Rate limit or quota exceeded\", \"sev\": \"HIGH\",\n  \"pat\": [\"429\", \"rate limit\", \"too many requests\", \"quota\", \"insufficient_quota\", \"resource_exhausted\"],\n  \"cause\": \"The provider is throttling you or the account ran out of credit/quota.\",\n  \"steps\": [\"Check billing/usage: OpenAI credits, Google Sheets API quota (60 writes/min/user), Telegram limits.\",\n            \"Open the node > Settings > enable 'Retry On Fail' (3 tries, 5000 ms wait).\",\n            \"If it is a burst (many bookings at once), add a Wait node or batch the calls.\",\n            \"Top up credit or request a higher quota, then re-run the execution.\"]},\n {\"key\": \"network\", \"title\": \"Network / timeout / service unreachable\", \"sev\": \"HIGH\",\n  \"pat\": [\"etimedout\", \"econnrefused\", \"econnreset\", \"enotfound\", \"timeout\", \"timed out\", \"socket hang up\", \"502\", \"503\", \"504\", \"bad gateway\", \"service unavailable\"],\n  \"cause\": \"The remote service (or your own n8n webhook URL) did not answer in time or was down.\",\n  \"steps\": [\"Check the provider status page (OpenAI, Stripe, Google Workspace, Telegram, Bokun).\",\n            \"If the URL is localhost or an old ngrok link, replace it with the production webhook URL of the target workflow.\",\n            \"Make sure the target workflow is ACTIVE (toggle at the top right).\",\n            \"Enable 'Retry On Fail' on the node, then re-run the execution.\"]},\n {\"key\": \"bokun\", \"title\": \"Bokun API / HMAC signature problem\", \"sev\": \"CRITICAL\",\n  \"pat\": [\"bokun\", \"x-bokun\", \"signature\"],\n  \"cause\": \"Bokun rejected the request: wrong keys, wrong signed string, wrong endpoint, or clock drift.\",\n  \"steps\": [\"Check the 'Settings' node: bokun_access_key, bokun_secret_key and bokun_path must be exact (no spaces).\",\n            \"The signed string must be: date + access key + HTTP method + path (HMAC-SHA1, Base64). Compare with Bokun's REST API docs.\",\n            \"X-Bokun-Date must be UTC in format yyyy-MM-dd HH:mm:ss. Check the server clock.\",\n            \"Switch demo_mode to true temporarily so customers can still get a payment link while you debug.\"]},\n {\"key\": \"stripe\", \"title\": \"Stripe request failed\", \"sev\": \"CRITICAL\",\n  \"pat\": [\"stripe\", \"checkout.session\", \"api.stripe.com\", \"payment_intent\", \"no such\"],\n  \"cause\": \"Stripe rejected the request (bad amount, missing field, wrong key mode) or the webhook payload was unexpected.\",\n  \"steps\": [\"Open the failed execution and read the Stripe error JSON in the node output (it names the bad parameter).\",\n            \"Amount must be an integer in cents (amount_cents). Currency must be 'eur'.\",\n            \"Check Stripe Dashboard > Developers > Logs for the exact request and response.\",\n            \"If the customer already paid, search the booking_ref in Stripe and mark the booking PAID manually.\"]},\n {\"key\": \"sheets\", \"title\": \"Google Sheets problem\", \"sev\": \"HIGH\",\n  \"pat\": [\"spreadsheet\", \"google sheets\", \"unable to parse range\", \"sheet with\", \"the caller does not have permission\", \"requested entity was not found\", \"googleapis\"],\n  \"cause\": \"Wrong sheet ID/tab name, missing header columns, or the Google account has no access to the file.\",\n  \"steps\": [\"Confirm the Sheet ID in the node and that tabs 'Jobs', 'CashLedger' and 'ErrorLog' exist with the exact names.\",\n            \"Row 1 headers must match exactly (case-sensitive) - see the sticky notes in each workflow.\",\n            \"Share the sheet with the Google account used by the credential (Editor access).\",\n            \"Re-authenticate the Google credential if it says permission/invalid_grant.\"]},\n {\"key\": \"telegram\", \"title\": \"Telegram problem\", \"sev\": \"HIGH\",\n  \"pat\": [\"telegram\", \"chat not found\", \"bot was blocked\", \"bot token\", \"bad request: \", \"query is too old\"],\n  \"cause\": \"Wrong chat ID, the bot is not in the group, a driver blocked the bot, or the button query expired.\",\n  \"steps\": [\"Check driver_chat_id in the 'Remember Booking' node. Group IDs usually start with a minus sign.\",\n            \"Make sure the bot is a member of the drivers' group (and an admin if it must edit messages).\",\n            \"A Telegram trigger needs a public HTTPS URL. Deactivate and re-activate the workflow to re-register the webhook.\",\n            \"'Query is too old' only means the driver tapped a button after ~1 minute; it is safe to ignore.\"]},\n {\"key\": \"openai\", \"title\": \"AI model (OpenAI) problem\", \"sev\": \"HIGH\",\n  \"pat\": [\"openai\", \"context_length\", \"maximum context\", \"model_not_found\", \"content_filter\", \"agent\"],\n  \"cause\": \"The model call failed: no credit, wrong model name, conversation too long, or the agent loop failed.\",\n  \"steps\": [\"Check OpenAI billing and that the model name (e.g. gpt-4o-mini) is available to your account.\",\n            \"Lower 'Conversation Memory' window length if you see a context-length error.\",\n            \"Open the agent node output: check which tool the agent called and what it returned.\",\n            \"Make sure tool descriptions are specific, and the booking tool URL is the PRODUCTION webhook URL.\"]},\n {\"key\": \"python\", \"title\": \"Python Code node error\", \"sev\": \"MEDIUM\",\n  \"pat\": [\"traceback\", \"keyerror\", \"nameerror\", \"typeerror\", \"valueerror\", \"attributeerror\", \"indexerror\", \"syntaxerror\", \"pyodide\", \"python\"],\n  \"cause\": \"The Python code raised an exception. A ValueError here is usually intentional validation (bad date, unknown tour, too many people).\",\n  \"steps\": [\"Open the failed execution > Code node > read the last line of the traceback.\",\n            \"ValueError: the input was invalid. Check what the AI agent or customer sent (see the node INPUT tab).\",\n            \"KeyError/TypeError: a field is missing or null. Print it with print() and look at the browser console.\",\n            \"If '_()' or 'to_py' fails, update n8n to a recent version (Python/Pyodide support differs between versions).\"]},\n {\"key\": \"data\", \"title\": \"Unexpected data / expression error\", \"sev\": \"MEDIUM\",\n  \"pat\": [\"cannot read properties\", \"undefined\", \"referenced node\", \"invalid json\", \"unexpected token\", \"expression\", \"no data\", \"not found in\"],\n  \"cause\": \"A node received different data than expected (empty field, renamed node, or invalid JSON).\",\n  \"steps\": [\"Open the failed node and compare INPUT with what the expression expects.\",\n            \"If you renamed a node, fix the $('Node name') expressions that point to it.\",\n            \"Re-send the original test request (curl) and watch the execution step by step.\",\n            \"Pin test data on the previous node while you fix the expression.\"]},\n]\nrule = next((r for r in RULES if any(p in blob for p in r[\"pat\"])), None) or {\n  \"key\": \"unknown\", \"title\": \"Unclassified error\", \"sev\": \"MEDIUM\",\n  \"cause\": \"The error did not match a known pattern.\",\n  \"steps\": [\"Open the execution link and look at the red node: read its error message and INPUT data.\",\n            \"Search the exact error text in the n8n community forum or the provider docs.\",\n            \"Re-run the execution after the fix (Executions > Retry).\"]}\n\nlow = wf_name.lower()\nif \"part 1\" in low:\n    part, impact, isev = \"Part 1 - Customer AI Agent\", \"Customers are not getting answers or cannot book. Reply manually on WhatsApp/email until fixed.\", \"HIGH\"\nelif \"part 2\" in low:\n    part, impact, isev = \"Part 2 - Bokun + Stripe\", \"Bookings may not be created, payment links may not be sent, or PAID bookings may not reach drivers. Check Stripe for payments with no matching booking.\", \"CRITICAL\"\nelif \"part 3\" in low:\n    part, impact, isev = \"Part 3 - Driver Dispatch\", \"Drivers may not receive paid jobs, so tours could be uncovered. Post the job to drivers manually.\", \"CRITICAL\"\nelif \"part 4\" in low:\n    part, impact, isev = \"Part 4 - Cash Ledger\", \"On-site payments may be missing from the ledger. Ask drivers to resend their /cash or /card commands.\", \"HIGH\"\nelse:\n    part, impact, isev = wf_name, \"Unknown impact - check the workflow.\", \"MEDIUM\"\n\nseverity = max(rule[\"sev\"], isev, key=lambda s: SEV[s])\nemoji = {\"CRITICAL\": \"🔴\", \"HIGH\": \"🟠\", \"MEDIUM\": \"🟡\"}[severity]\ncolour = {\"CRITICAL\": \"#b91c1c\", \"HIGH\": \"#c2410c\", \"MEDIUM\": \"#a16207\"}[severity]\nnow = datetime.now(timezone.utc).strftime(\"%Y-%m-%d %H:%M:%S UTC\")\nexec_url = ex.get(\"url\") or \"\"\nexec_id = str(ex.get(\"id\") or \"\")\ne = html.escape\nsteps_html = \"\".join(f\"<li style='margin-bottom:6px'>{e(s)}</li>\" for s in rule[\"steps\"])\nstack_short = \"\\n\".join(stack.splitlines()[:6])\nlink_html = f\"<a href='{e(exec_url)}' style='background:#111827;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Open failed execution</a>\" if exec_url else \"<i>(no execution link - trigger error)</i>\"\n\nbody = f\"\"\"\n<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:auto;color:#111827\">\n  <div style=\"background:{colour};color:#fff;padding:16px 20px;border-radius:8px 8px 0 0\">\n    <div style=\"font-size:13px;opacity:.9\">Hidden Gems Travel automation alert</div>\n    <div style=\"font-size:20px;font-weight:bold\">{emoji} {severity}: {e(part)} failed</div>\n  </div>\n  <div style=\"border:1px solid #e5e7eb;border-top:none;padding:20px;border-radius:0 0 8px 8px\">\n    <table style=\"font-size:14px;border-collapse:collapse;width:100%\">\n      <tr><td style=\"padding:4px 0;color:#6b7280;width:140px\">Workflow</td><td>{e(wf_name)}</td></tr>\n      <tr><td style=\"padding:4px 0;color:#6b7280\">Failed node</td><td><b>{e(str(node))}</b></td></tr>\n      <tr><td style=\"padding:4px 0;color:#6b7280\">Category</td><td>{e(rule['title'])}</td></tr>\n      <tr><td style=\"padding:4px 0;color:#6b7280\">Time</td><td>{now}</td></tr>\n      <tr><td style=\"padding:4px 0;color:#6b7280\">Execution ID</td><td>{e(exec_id) or '-'}</td></tr>\n    </table>\n    <h3 style=\"margin:18px 0 6px\">Error message</h3>\n    <pre style=\"background:#f3f4f6;padding:12px;border-radius:6px;white-space:pre-wrap;font-size:13px\">{e(message)}</pre>\n    <h3 style=\"margin:18px 0 6px\">Business impact</h3>\n    <p style=\"margin:0\">{e(impact)}</p>\n    <h3 style=\"margin:18px 0 6px\">Most likely cause</h3>\n    <p style=\"margin:0\">{e(rule['cause'])}</p>\n    <h3 style=\"margin:18px 0 6px\">Troubleshooting steps</h3>\n    <ol style=\"padding-left:20px;margin:0\">{steps_html}</ol>\n    <p style=\"margin:20px 0\">{link_html}</p>\n    <details><summary style=\"cursor:pointer;color:#6b7280;font-size:13px\">Technical stack trace</summary>\n      <pre style=\"background:#f3f4f6;padding:12px;border-radius:6px;white-space:pre-wrap;font-size:12px\">{e(stack_short) or 'n/a'}</pre></details>\n  </div>\n</div>\"\"\"\n\nreturn [{\"json\": {\n    \"alert_email\": d.get(\"alert_email\"), \"from_email\": d.get(\"from_email\"),\n    \"subject\": f\"[Hidden Gems Travel] {emoji} {severity} - {part}: failed at '{node}'\",\n    \"html\": body, \"severity\": severity, \"category\": rule[\"key\"], \"workflow\": wf_name,\n    \"node\": str(node), \"message\": message[:500], \"execution_url\": exec_url, \"execution_id\": exec_id,\n    \"timestamp\": now, \"telegram_text\": f\"{emoji} {severity}: {part} failed at '{node}'\\n{message[:200]}\\n{exec_url}\",\n}}]"
+      },
+      "name": "Analyze Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ],
+      "id": "analyze-error"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.from_email }}",
+        "toEmail": "={{ $json.alert_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        100
+      ],
+      "id": "send-alert-email"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "ErrorLog",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.timestamp }}",
+            "Workflow": "={{ $json.workflow }}",
+            "Node": "={{ $json.node }}",
+            "Severity": "={{ $json.severity }}",
+            "Category": "={{ $json.category }}",
+            "Message": "={{ $json.message }}",
+            "ExecutionURL": "={{ $json.execution_url }}",
+            "ExecutionId": "={{ $json.execution_id }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Log Error to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        680,
+        300
+      ],
+      "id": "log-error-to-sheet",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "YOUR_OWNER_CHAT_ID",
+        "text": "={{ $json.telegram_text }}"
+      },
+      "name": "Telegram Alert (optional)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        500
+      ],
+      "id": "telegram-alert-optional",
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Error handler\nEvery failing workflow calls this one (set it in each workflow: Settings > Error workflow).\nPython classifies the error, picks severity, writes cause + troubleshooting steps + business impact, then: email, log to sheet 'ErrorLog' (Timestamp | Workflow | Node | Severity | Category | Message | ExecutionURL | ExecutionId), optional Telegram.\nEdit the To/From email in 'Alert Settings'.",
+        "height": 220,
+        "width": 640
+      },
+      "name": "Note EH",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -40
+      ],
+      "id": "note-eh"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Alert Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Settings": {
+      "main": [
+        [
+          {
+            "node": "Analyze Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Error": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Error to Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram Alert (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

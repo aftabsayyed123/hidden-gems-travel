@@ -1,0 +1,381 @@
+{
+  "name": "Hidden Gems Travel - Part 1 - Customer AI Agent (Python)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hgt-whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "WhatsApp Incoming (Demo Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "whatsapp-incoming-(demo-webhook)",
+      "webhookId": "hgt-whatsapp-demo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "from",
+              "value": "={{ $json.body.from || 'demo-user' }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "text",
+              "value": "={{ $json.body.text || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Normalize Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "id": "normalize-message"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "You are the virtual assistant of Hidden Gems Travel, a boutique tour company.\n\nLANGUAGE: Detect the customer's language (Italian, English, Spanish, French or Portuguese) and always reply in that same language. Keep messages short and friendly, WhatsApp style.\n\nRULES:\n- For tours, prices, durations and meeting points ALWAYS call the tool get_tours. Never invent prices or tours.\n- To book, collect: tour, date, time, number of people, full name. Ask for missing items one or two at a time.\n- When you have everything, call create_booking_request, then send the customer the booking reference and payment link.\n- If the customer is angry, asks for a refund, or asks something you cannot answer, say a human colleague will contact them soon and add the word HANDOFF at the very end of your message.\n- Never promise discounts or things not in the tool data."
+        }
+      },
+      "name": "Hidden Gems Travel AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        460,
+        200
+      ],
+      "id": "hgt-tour-ai-agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        380,
+        440
+      ],
+      "id": "openai-chat-model"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Normalize Message').item.json.from }}",
+        "contextWindowLength": 10
+      },
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        520,
+        440
+      ],
+      "id": "conversation-memory"
+    },
+    {
+      "parameters": {
+        "name": "get_tours",
+        "description": "Returns the list of available tours with price, duration, meeting point and highlights. Call with any text.",
+        "language": "python",
+        "pythonCode": "import json\n\ntours = [\n    {\"id\": \"classic\", \"name\": \"Hidden Gems Classic City Tour\", \"duration\": \"2 hours\", \"price_eur\": 39,\n     \"meeting_point\": \"Piazza del Popolo\", \"highlights\": \"Colosseum, Trevi Fountain, Pantheon\"},\n    {\"id\": \"sunset\", \"name\": \"Sunset Viewpoints Tour\", \"duration\": \"2.5 hours\", \"price_eur\": 49,\n     \"meeting_point\": \"Piazza Navona\", \"highlights\": \"Gianicolo viewpoint, Trastevere, gelato stop\"},\n    {\"id\": \"private\", \"name\": \"Private Guided Tour (up to 6 people)\", \"duration\": \"3 hours\", \"price_eur\": 220,\n     \"meeting_point\": \"Your hotel\", \"highlights\": \"Custom route with a private guide\"},\n]\nreturn json.dumps(tours)"
+      },
+      "name": "get_tours",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        440
+      ],
+      "id": "get_tours"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Creates a real booking request and payment link. Call only when you have tour_id (classic, sunset or private), date, time, people and customer_name.",
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/hgt-create-booking",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tour_id\": \"{{ $fromAI('tour_id', 'classic, sunset or private') }}\",\n  \"date\": \"{{ $fromAI('date', 'tour date YYYY-MM-DD') }}\",\n  \"time\": \"{{ $fromAI('time', 'start time HH:MM') }}\",\n  \"people\": {{ $fromAI('people', 'number of people', 'number') }},\n  \"customer_name\": \"{{ $fromAI('customer_name', 'full name') }}\"\n}",
+        "options": {}
+      },
+      "name": "create_booking_request",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        440
+      ],
+      "id": "create_booking_request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "HANDOFF",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Needs Human?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        820,
+        200
+      ],
+      "id": "needs-human?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "reply",
+              "value": "={{ $json.output.replace('HANDOFF','').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "b2",
+              "name": "handoff",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Flag for Human",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1060,
+        100
+      ],
+      "id": "flag-for-human"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1",
+              "name": "reply",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "d2",
+              "name": "handoff",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Pass Through",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1060,
+        300
+      ],
+      "id": "pass-through"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $json.reply, handoff: $json.handoff } }}",
+        "options": {}
+      },
+      "name": "Reply to Customer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1300,
+        200
+      ],
+      "id": "reply-to-customer"
+    },
+    {
+      "parameters": {
+        "content": "## Part 1 - Customer AI Agent\nDemo: replace the Webhook with WhatsApp/respond.io trigger and the Respond node with a Send-message node in production.",
+        "height": 160,
+        "width": 380
+      },
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        20
+      ],
+      "id": "note-1"
+    }
+  ],
+  "connections": {
+    "WhatsApp Incoming (Demo Webhook)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Message": {
+      "main": [
+        [
+          {
+            "node": "Hidden Gems Travel AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hidden Gems Travel AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Needs Human?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Hidden Gems Travel AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Hidden Gems Travel AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_tours": {
+      "ai_tool": [
+        [
+          {
+            "node": "Hidden Gems Travel AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_booking_request": {
+      "ai_tool": [
+        [
+          {
+            "node": "Hidden Gems Travel AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Human?": {
+      "main": [
+        [
+          {
+            "node": "Flag for Human",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pass Through",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag for Human": {
+      "main": [
+        [
+          {
+            "node": "Reply to Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Through": {
+      "main": [
+        [
+          {
+            "node": "Reply to Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

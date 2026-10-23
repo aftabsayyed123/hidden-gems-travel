@@ -1,0 +1,329 @@
+{
+  "name": "Hidden Gems Travel - Part 4 - Cash Ledger (Python)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hgt-ledger",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Ledger Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "ledger-webhook",
+      "webhookId": "hgt-ledger-demo"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\nimport re\n\nb = py(_input.first().json).get(\"body\") or {}\ntext = (b.get(\"text\") or \"\").strip()\nbase = {\"chat_id\": b.get(\"chat_id\"), \"driver\": b.get(\"driver\"), \"text\": text}\nUSAGE = \"Commands:\\n/cash REF AMOUNT\\n/card REF AMOUNT\\n/handover AMOUNT\\n/balance\"\n\nm = re.match(r\"^/(cash|card|handover|balance)(?:@\\w+)?\\s*(.*)$\", text, re.I)\nif not m:\n    return [{\"json\": {**base, \"valid\": False, \"error\": USAGE}}]\n\ncommand = m.group(1).lower()\nparts = m.group(2).split()\nif command == \"balance\":\n    return [{\"json\": {**base, \"valid\": True, \"command\": command}}]\n\nref = \"\" if command == \"handover\" else (parts[0].upper() if parts else \"\")\nraw_amount = parts[0] if command == \"handover\" else (parts[1] if len(parts) > 1 else \"\")\ntry:\n    amount = float(raw_amount.replace(\",\", \".\"))\nexcept ValueError:\n    amount = 0\nif amount <= 0 or (command != \"handover\" and not ref):\n    usage = \"/handover AMOUNT\" if command == \"handover\" else f\"/{command} REF AMOUNT\"\n    return [{\"json\": {**base, \"valid\": False, \"error\": f\"Please use: {usage}\"}}]\n\nreturn [{\"json\": {**base, \"valid\": True, \"command\": command, \"ref\": ref, \"amount\": amount}}]"
+      },
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "parse-command"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Command Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        200
+      ],
+      "id": "command-valid"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.error }}"
+      },
+      "name": "Send Help",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        360
+      ],
+      "id": "send-help"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.command !== 'balance' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Needs Ledger Row",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        120
+      ],
+      "id": "needs-ledger-row"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CashLedger",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "BookingRef": "={{ $json.ref }}",
+            "Driver": "={{ $json.driver }}",
+            "Method": "={{ $json.command }}",
+            "Amount": "={{ $json.amount }}",
+            "Note": "on-site via Telegram"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Add Row to Ledger",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        40
+      ],
+      "id": "add-row-to-ledger"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CashLedger",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "name": "Read Ledger",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "read-ledger",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\np = py(_(\"Parse Command\").first().json)\nrows = [py(i.json) for i in _input.all()]\nmine = [r for r in rows if r.get(\"Driver\") == p[\"driver\"]]\n\ndef total(method):\n    t = 0.0\n    for r in mine:\n        if str(r.get(\"Method\", \"\")).lower() == method:\n            try:\n                t += float(str(r.get(\"Amount\", 0)).replace(\",\", \".\"))\n            except ValueError:\n                pass\n    return t\n\ncash, card, handed = total(\"cash\"), total(\"card\"), total(\"handover\")\nbalance = cash - handed\nheads = {\n    \"cash\": f\"✅ Cash €{p.get('amount')} saved for {p.get('ref')}.\\n\",\n    \"card\": f\"✅ Card €{p.get('amount')} saved for {p.get('ref')}.\\n\",\n    \"handover\": f\"✅ Handover €{p.get('amount')} saved.\\n\",\n}\ntext = (heads.get(p.get(\"command\"), \"\") +\n        f\"💶 Cash you are holding: €{balance:.2f}\\n\"\n        f\"(cash €{cash:.2f} − handed over €{handed:.2f}, card on site €{card:.2f})\")\nreturn [{\"json\": {\"chat_id\": p[\"chat_id\"], \"text\": text}}]"
+      },
+      "name": "Compute Balance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ],
+      "id": "compute-balance"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}"
+      },
+      "name": "Reply to Driver",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        200
+      ],
+      "id": "reply-to-driver"
+    },
+    {
+      "parameters": {
+        "content": "## Part 4 - On-site payments + cash ledger\nDriver types /cash HG-XXXX 98 -> row in Google Sheet -> bot replies with the cash they hold.\nTab 'CashLedger' headers: Timestamp | BookingRef | Driver | Method | Amount | Note",
+        "height": 170,
+        "width": 620
+      },
+      "name": "Note 4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "note-4"
+    }
+  ],
+  "connections": {
+    "Ledger Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Command": {
+      "main": [
+        [
+          {
+            "node": "Command Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Command Valid": {
+      "main": [
+        [
+          {
+            "node": "Needs Ledger Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Help",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Ledger Row": {
+      "main": [
+        [
+          {
+            "node": "Add Row to Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Row to Ledger": {
+      "main": [
+        [
+          {
+            "node": "Read Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Ledger": {
+      "main": [
+        [
+          {
+            "node": "Compute Balance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Balance": {
+      "main": [
+        [
+          {
+            "node": "Reply to Driver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

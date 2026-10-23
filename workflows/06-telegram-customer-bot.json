@@ -1,0 +1,326 @@
+{
+  "name": "Hidden Gems Travel - Telegram Customer Bot (WhatsApp stand-in)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "name": "Customer Bot",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "id": "customer-bot",
+      "webhookId": "hgt-customer-bot-demo"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\nmsg = py(_input.first().json).get(\"message\") or {}\ntext = (msg.get(\"text\") or \"\").strip()\nfrm = msg.get(\"from\") or {}\nchat_id = (msg.get(\"chat\") or {}).get(\"id\")\n\nis_start = text.lower().startswith(\"/start\")\nunsupported = not text            # photo, voice, sticker...\nif unsupported:\n    text = \"(the customer sent a non-text message such as a photo or voice note)\"\n\nreturn [{\"json\": {\n    \"chat_id\": chat_id, \"text\": text, \"is_start\": is_start,\n    \"name\": frm.get(\"first_name\", \"there\"), \"session\": f\"tg-{chat_id}\",\n}}]"
+      },
+      "name": "Prepare Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "prepare-message"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.is_start }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Start",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        200
+      ],
+      "id": "is-start"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "🛺 Welcome to Hidden Gems Travel Rome!\n\n🇬🇧 Ask me about our guided tours and I can book one for you.\n🇮🇹 Chiedimi dei nostri tour in guided tour e prenoto per te.\n🇪🇸 Pregúntame por nuestros tours y reservo por ti.\n🇫🇷 Posez-moi vos questions sur nos tours, je réserve pour vous.\n🇵🇹 Pergunte-me sobre os nossos passeios e eu reservo para si."
+      },
+      "name": "Send Welcome",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        100
+      ],
+      "id": "send-welcome"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendChatAction",
+        "chatId": "={{ $json.chat_id }}",
+        "action": "typing"
+      },
+      "name": "Typing",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        320
+      ],
+      "id": "typing"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/hgt-whatsapp",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { from: $('Prepare Message').item.json.session, text: $('Prepare Message').item.json.text } }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "name": "Ask Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        320
+      ],
+      "id": "ask-agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\nprep = py(_(\"Prepare Message\").first().json)\nr = py(_input.first().json) or {}\nreply = str(r.get(\"reply\") or \"\").strip()\nfailed = (not reply) or (\"error\" in r and not reply)\nif failed:\n    reply = (\"Sorry, I have a technical problem right now. A colleague will write to you soon. / \"\n             \"Mi dispiace, ho un problema tecnico. Un collega ti scriverà presto.\")\nreturn [{\"json\": {\n    \"chat_id\": prep[\"chat_id\"], \"name\": prep[\"name\"], \"customer_text\": prep[\"text\"],\n    \"reply\": reply, \"handoff\": bool(r.get(\"handoff\")) or failed, \"agent_failed\": failed,\n}}]"
+      },
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        320
+      ],
+      "id": "format-reply"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply }}"
+      },
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        320
+      ],
+      "id": "send-reply"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Format Reply').item.json.handoff }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Needs Human",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        320
+      ],
+      "id": "needs-human"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "YOUR_OWNER_CHAT_ID",
+        "text": "={{ '🙋 Human needed' + ($('Format Reply').item.json.agent_failed ? ' (AGENT FAILED)' : '') + '\\nCustomer: ' + $('Format Reply').item.json.name + ' (chat ' + $('Format Reply').item.json.chat_id + ')\\nSaid: ' + $('Format Reply').item.json.customer_text + '\\nBot replied: ' + $('Format Reply').item.json.reply }}"
+      },
+      "name": "Alert Owner",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        320
+      ],
+      "id": "alert-owner"
+    },
+    {
+      "parameters": {
+        "content": "## Telegram customer bot (stand-in for WhatsApp)\nUse a SECOND bot (new token from @BotFather): one bot can only feed one trigger, and your first bot already serves the drivers.\nIt sends each chat message to Part 1's webhook, so you test the real agent, memory, booking and payment link from your phone.\nSet the Part 1 URL in 'Ask Agent' and your chat ID in 'Alert Owner'.\nSwap for WhatsApp later: replace the trigger + the 3 send nodes only.",
+        "height": 240,
+        "width": 640
+      },
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -60
+      ],
+      "id": "note"
+    }
+  ],
+  "connections": {
+    "Customer Bot": {
+      "main": [
+        [
+          {
+            "node": "Prepare Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Message": {
+      "main": [
+        [
+          {
+            "node": "Is Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Start": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Typing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Typing": {
+      "main": [
+        [
+          {
+            "node": "Ask Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Needs Human",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Human": {
+      "main": [
+        [
+          {
+            "node": "Alert Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

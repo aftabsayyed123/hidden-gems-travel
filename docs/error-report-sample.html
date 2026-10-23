@@ -1,0 +1,29 @@
+
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:auto;color:#111827">
+      <div style="background:#b91c1c;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0">
+        <div style="font-size:13px;opacity:.9">Hidden Gems Travel automation alert</div>
+        <div style="font-size:20px;font-weight:bold">🔴 CRITICAL: Part 2 - Bokun + Stripe failed</div>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:20px;border-radius:0 0 8px 8px">
+        <table style="font-size:14px;border-collapse:collapse;width:100%">
+          <tr><td style="padding:4px 0;color:#6b7280;width:140px">Workflow</td><td>Hidden Gems Travel - Part 2 - Bokun and Stripe (Python)</td></tr>
+          <tr><td style="padding:4px 0;color:#6b7280">Failed node</td><td><b>Create Stripe Checkout</b></td></tr>
+          <tr><td style="padding:4px 0;color:#6b7280">Category</td><td>Authentication / credentials problem</td></tr>
+          <tr><td style="padding:4px 0;color:#6b7280">Time</td><td>2026-10-23 15:40:21 UTC</td></tr>
+          <tr><td style="padding:4px 0;color:#6b7280">Execution ID</td><td>4821</td></tr>
+        </table>
+        <h3 style="margin:18px 0 6px">Error message</h3>
+        <pre style="background:#f3f4f6;padding:12px;border-radius:6px;white-space:pre-wrap;font-size:13px">401 - Unauthorized: Invalid API Key provided: sk_test_****abcd</pre>
+        <h3 style="margin:18px 0 6px">Business impact</h3>
+        <p style="margin:0">Bookings may not be created, payment links may not be sent, or PAID bookings may not reach drivers. Check Stripe for payments with no matching booking.</p>
+        <h3 style="margin:18px 0 6px">Most likely cause</h3>
+        <p style="margin:0">An API key or OAuth token is wrong, expired, revoked or lacks permission.</p>
+        <h3 style="margin:18px 0 6px">Troubleshooting steps</h3>
+        <ol style="padding-left:20px;margin:0"><li style='margin-bottom:6px'>Open the failed node and check which credential it uses.</li><li style='margin-bottom:6px'>Click &#x27;Test&#x27; on that credential in n8n (Credentials page). Re-connect Google/Telegram OAuth if it fails.</li><li style='margin-bottom:6px'>OpenAI/Stripe: confirm the key is active in the provider dashboard and that you used the TEST key with test mode (or LIVE with live).</li><li style='margin-bottom:6px'>Bokun: confirm access key + secret key and that the account has API access enabled.</li><li style='margin-bottom:6px'>Re-run the execution from the n8n Executions list after fixing.</li></ol>
+        <p style="margin:20px 0"><a href='https://n8n.example.com/workflow/12/executions/4821' style='background:#111827;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Open failed execution</a></p>
+        <details><summary style="cursor:pointer;color:#6b7280;font-size:13px">Technical stack trace</summary>
+          <pre style="background:#f3f4f6;padding:12px;border-radius:6px;white-space:pre-wrap;font-size:12px">NodeApiError: Invalid API Key provided
+    at Object.execute (HttpRequest.node.ts:512)
+    at WorkflowExecute.runNode (WorkflowExecute.ts:844)</pre></details>
+      </div>
+    </div>

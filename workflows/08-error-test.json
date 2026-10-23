@@ -1,0 +1,67 @@
+{
+  "name": "Hidden Gems Travel - Part 2 - Error Test",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "hgt-error-test",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Trigger Test Error",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "trigger-test-error",
+      "webhookId": "hgt-error-test-demo"
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "={{ $json.query.msg || 'Test failure: 401 Unauthorized from api.stripe.com' }}"
+      },
+      "name": "Fail On Purpose",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        240,
+        200
+      ],
+      "id": "fail-on-purpose"
+    },
+    {
+      "parameters": {
+        "content": "## Test the error handler\n1. Settings > Error workflow = 'Hidden Gems Travel - Error Handler'.\n2. Activate this workflow.\n3. Open <n8n-url>/webhook/hgt-error-test?msg=Rate limit 429 from Google Sheets\nYou should get an email within seconds. (Name this workflow with 'Part 2' to test CRITICAL severity.)",
+        "height": 190,
+        "width": 560
+      },
+      "name": "Note ET",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "note-et"
+    }
+  ],
+  "connections": {
+    "Trigger Test Error": {
+      "main": [
+        [
+          {
+            "node": "Fail On Purpose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

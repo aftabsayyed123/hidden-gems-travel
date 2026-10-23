@@ -1,0 +1,927 @@
+{
+  "name": "Hidden Gems Travel - Part 2 - Bokun and Stripe (Python)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hgt-create-booking",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Booking Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "booking-request-webhook",
+      "webhookId": "hgt-create-booking-demo"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\nimport random, string\nfrom datetime import datetime, date\n\ndata = py(_input.first().json)\nb = data.get(\"body\") or {}\n\n# Prices live HERE (server side). We never trust a price sent by the AI.\nCATALOG = {\n    \"classic\": {\"name\": \"Hidden Gems Classic City Tour\", \"price\": 39,  \"per_person\": True,  \"max_people\": 12},\n    \"sunset\":  {\"name\": \"Sunset Viewpoints Tour\",        \"price\": 49,  \"per_person\": True,  \"max_people\": 12},\n    \"private\": {\"name\": \"Private Guided Tour (up to 6 people)\", \"price\": 220, \"per_person\": False, \"max_people\": 6},\n}\n\ntour = CATALOG.get(b.get(\"tour_id\"))\nif tour is None:\n    raise ValueError(f\"Unknown tour_id: {b.get('tour_id')}\")\n\ntry:\n    people = int(b.get(\"people\") or 1)\nexcept (TypeError, ValueError):\n    raise ValueError(f\"people must be a number, got: {b.get('people')}\")\nif not 1 <= people <= tour[\"max_people\"]:\n    raise ValueError(f\"people must be between 1 and {tour['max_people']} for this tour\")\n\ntry:\n    tour_date = datetime.strptime(str(b.get(\"date\")), \"%Y-%m-%d\").date()\nexcept ValueError:\n    raise ValueError(f\"date must be YYYY-MM-DD, got: {b.get('date')}\")\nif tour_date < date.today():\n    raise ValueError(\"date is in the past\")\n\nif not str(b.get(\"customer_name\") or \"\").strip():\n    raise ValueError(\"customer_name is required\")\n\namount_eur = tour[\"price\"] * people if tour[\"per_person\"] else tour[\"price\"]\nref = \"HG-\" + \"\".join(random.choices(string.ascii_uppercase + string.digits, k=6))\n\nreturn [{\"json\": {\n    \"booking_ref\": ref,\n    \"tour_id\": b[\"tour_id\"], \"tour_name\": tour[\"name\"], \"people\": people,\n    \"date\": str(b[\"date\"]), \"time\": b.get(\"time\"), \"customer_name\": str(b[\"customer_name\"]).strip(),\n    \"amount_eur\": amount_eur, \"amount_cents\": round(amount_eur * 100),\n}}]"
+      },
+      "name": "Validate and Price",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "validate-and-price"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "x0",
+              "name": "demo_mode",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "x1",
+              "name": "bokun_base_url",
+              "value": "https://api.bokuntest.com",
+              "type": "string"
+            },
+            {
+              "id": "x2",
+              "name": "bokun_path",
+              "value": "/REPLACE-WITH-BOKUN-BOOKING-ENDPOINT",
+              "type": "string"
+            },
+            {
+              "id": "x3",
+              "name": "bokun_access_key",
+              "value": "YOUR_BOKUN_ACCESS_KEY",
+              "type": "string"
+            },
+            {
+              "id": "x4",
+              "name": "bokun_secret_key",
+              "value": "YOUR_BOKUN_SECRET_KEY",
+              "type": "string"
+            },
+            {
+              "id": "x5",
+              "name": "bokun_date",
+              "value": "={{ $now.setZone('UTC').toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        200
+      ],
+      "id": "settings"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA1",
+        "value": "={{ $json.bokun_date + $json.bokun_access_key + 'POST' + $json.bokun_path }}",
+        "dataPropertyName": "bokun_signature",
+        "secret": "={{ $json.bokun_secret_key }}",
+        "encoding": "base64"
+      },
+      "name": "Build Bokun Signature",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        660,
+        200
+      ],
+      "id": "build-bokun-signature"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.demo_mode }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Demo Mode Bokun",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        200
+      ],
+      "id": "demo-mode-bokun"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "x0",
+              "name": "bokun_booking_id",
+              "value": "={{ 'BK-' + $json.booking_ref }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Mock Bokun",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1100,
+        100
+      ],
+      "id": "mock-bokun"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.bokun_base_url + $json.bokun_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Bokun-AccessKey",
+              "value": "={{ $json.bokun_access_key }}"
+            },
+            {
+              "name": "X-Bokun-Date",
+              "value": "={{ $json.bokun_date }}"
+            },
+            {
+              "name": "X-Bokun-Signature",
+              "value": "={{ $json.bokun_signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { externalReference: $json.booking_ref, activity: $json.tour_id, date: $json.date, startTime: $json.time, passengers: $json.people, customer: $json.customer_name } }}",
+        "options": {}
+      },
+      "name": "Create Booking in Bokun",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        320
+      ],
+      "id": "create-booking-in-bokun"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "booking_ref",
+              "value": "={{ $('Validate and Price').item.json.booking_ref }}",
+              "type": "string"
+            },
+            {
+              "id": "r2",
+              "name": "tour_name",
+              "value": "={{ $('Validate and Price').item.json.tour_name }}",
+              "type": "string"
+            },
+            {
+              "id": "r3",
+              "name": "customer_name",
+              "value": "={{ $('Validate and Price').item.json.customer_name }}",
+              "type": "string"
+            },
+            {
+              "id": "r4",
+              "name": "date",
+              "value": "={{ $('Validate and Price').item.json.date }}",
+              "type": "string"
+            },
+            {
+              "id": "r5",
+              "name": "time",
+              "value": "={{ $('Validate and Price').item.json.time }}",
+              "type": "string"
+            },
+            {
+              "id": "r6",
+              "name": "people",
+              "value": "={{ $('Validate and Price').item.json.people }}",
+              "type": "number"
+            },
+            {
+              "id": "r7",
+              "name": "amount_eur",
+              "value": "={{ $('Validate and Price').item.json.amount_eur }}",
+              "type": "number"
+            },
+            {
+              "id": "r8",
+              "name": "amount_cents",
+              "value": "={{ $('Validate and Price').item.json.amount_cents }}",
+              "type": "number"
+            },
+            {
+              "id": "r9",
+              "name": "demo_mode",
+              "value": "={{ $('Settings').item.json.demo_mode }}",
+              "type": "boolean"
+            },
+            {
+              "id": "r10",
+              "name": "bokun_booking_id",
+              "value": "={{ $json.bokun_booking_id || $json.confirmationCode || $json.bookingId || 'UNKNOWN' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Bokun Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1340,
+        200
+      ],
+      "id": "bokun-result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.demo_mode }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Demo Mode Stripe",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        200
+      ],
+      "id": "demo-mode-stripe"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "x0",
+              "name": "payment_url",
+              "value": "={{ 'https://checkout.stripe.com/demo/' + $json.booking_ref }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Mock Stripe",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1780,
+        100
+      ],
+      "id": "mock-stripe"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.stripe.com/v1/checkout/sessions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "mode",
+              "value": "payment"
+            },
+            {
+              "name": "success_url",
+              "value": "https://example.com/thanks"
+            },
+            {
+              "name": "cancel_url",
+              "value": "https://example.com/cancelled"
+            },
+            {
+              "name": "line_items[0][quantity]",
+              "value": "1"
+            },
+            {
+              "name": "line_items[0][price_data][currency]",
+              "value": "eur"
+            },
+            {
+              "name": "line_items[0][price_data][unit_amount]",
+              "value": "={{ $json.amount_cents }}"
+            },
+            {
+              "name": "line_items[0][price_data][product_data][name]",
+              "value": "={{ $json.tour_name + ' - ' + $json.date }}"
+            },
+            {
+              "name": "metadata[booking_ref]",
+              "value": "={{ $json.booking_ref }}"
+            },
+            {
+              "name": "metadata[bokun_booking_id]",
+              "value": "={{ $json.bokun_booking_id }}"
+            },
+            {
+              "name": "metadata[tour_name]",
+              "value": "={{ $json.tour_name }}"
+            },
+            {
+              "name": "metadata[date]",
+              "value": "={{ $json.date }}"
+            },
+            {
+              "name": "metadata[time]",
+              "value": "={{ $json.time }}"
+            },
+            {
+              "name": "metadata[people]",
+              "value": "={{ $json.people }}"
+            },
+            {
+              "name": "metadata[customer_name]",
+              "value": "={{ $json.customer_name }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Create Stripe Checkout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        320
+      ],
+      "id": "create-stripe-checkout"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "booking_reference",
+              "value": "={{ $('Bokun Result').item.json.booking_ref }}",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "bokun_booking_id",
+              "value": "={{ $('Bokun Result').item.json.bokun_booking_id }}",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "amount_eur",
+              "value": "={{ $('Bokun Result').item.json.amount_eur }}",
+              "type": "number"
+            },
+            {
+              "id": "s4",
+              "name": "payment_link",
+              "value": "={{ $json.payment_url || $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "status",
+              "value": "PENDING_PAYMENT",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Build Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        200
+      ],
+      "id": "build-response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Reply With Payment Link",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2220,
+        200
+      ],
+      "id": "reply-with-payment-link"
+    },
+    {
+      "parameters": {
+        "content": "## Part 2A - Create booking + payment link\nValidate -> sign request (HMAC) -> Bokun -> Stripe Checkout -> link back to the AI agent.\nSet demo_mode=false in Settings once real keys are added.",
+        "height": 170,
+        "width": 520
+      },
+      "name": "Note A",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "note-a"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hgt-stripe-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Stripe Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        700
+      ],
+      "id": "stripe-webhook",
+      "webhookId": "hgt-stripe-webhook-demo"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "p1",
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "checkout.session.completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Payment Completed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        700
+      ],
+      "id": "payment-completed"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "booking_ref",
+              "value": "={{ $json.body.data.object.metadata.booking_ref }}",
+              "type": "string"
+            },
+            {
+              "id": "e2",
+              "name": "bokun_booking_id",
+              "value": "={{ $json.body.data.object.metadata.bokun_booking_id }}",
+              "type": "string"
+            },
+            {
+              "id": "e3",
+              "name": "amount_paid_eur",
+              "value": "={{ $json.body.data.object.amount_total / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "m0",
+              "name": "tour_name",
+              "value": "={{ $json.body.data.object.metadata.tour_name }}",
+              "type": "string"
+            },
+            {
+              "id": "m1",
+              "name": "date",
+              "value": "={{ $json.body.data.object.metadata.date }}",
+              "type": "string"
+            },
+            {
+              "id": "m2",
+              "name": "time",
+              "value": "={{ $json.body.data.object.metadata.time }}",
+              "type": "string"
+            },
+            {
+              "id": "m3",
+              "name": "people",
+              "value": "={{ $json.body.data.object.metadata.people }}",
+              "type": "string"
+            },
+            {
+              "id": "m4",
+              "name": "customer_name",
+              "value": "={{ $json.body.data.object.metadata.customer_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extract Booking",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        620
+      ],
+      "id": "extract-booking"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bokuntest.com/REPLACE-WITH-BOKUN-PAYMENT-ENDPOINT",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { bookingId: $json.bokun_booking_id, paid: true } }}",
+        "options": {}
+      },
+      "name": "Mark Paid in Bokun",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        620
+      ],
+      "id": "mark-paid-in-bokun",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "x0",
+              "name": "status",
+              "value": "PAID",
+              "type": "string"
+            },
+            {
+              "id": "x1",
+              "name": "paid_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Booking Paid",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        620
+      ],
+      "id": "booking-paid"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { received: true } }}",
+        "options": {}
+      },
+      "name": "Acknowledge Stripe",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        700
+      ],
+      "id": "acknowledge-stripe"
+    },
+    {
+      "parameters": {
+        "content": "## Part 2B - Stripe says 'paid'\nStripe calls this URL after payment -> we mark the booking PAID in Bokun.\nThe 'Booking Paid' output is what Part 3 (driver dispatch) and Part 4 (ledger) will hook onto.",
+        "height": 170,
+        "width": 520
+      },
+      "name": "Note B",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ],
+      "id": "note-b"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/hgt-dispatch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { booking_ref: $json.booking_ref, tour_name: $json.tour_name, date: $json.date, time: $json.time, people: $json.people, customer_name: $json.customer_name, amount_paid_eur: $json.amount_paid_eur } }}",
+        "options": {}
+      },
+      "name": "Send to Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        620
+      ],
+      "id": "send-to-dispatch",
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Booking Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate and Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Price": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Build Bokun Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Bokun Signature": {
+      "main": [
+        [
+          {
+            "node": "Demo Mode Bokun",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demo Mode Bokun": {
+      "main": [
+        [
+          {
+            "node": "Mock Bokun",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Booking in Bokun",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Bokun": {
+      "main": [
+        [
+          {
+            "node": "Bokun Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Booking in Bokun": {
+      "main": [
+        [
+          {
+            "node": "Bokun Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bokun Result": {
+      "main": [
+        [
+          {
+            "node": "Demo Mode Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demo Mode Stripe": {
+      "main": [
+        [
+          {
+            "node": "Mock Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Stripe Checkout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Stripe": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Stripe Checkout": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Reply With Payment Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe Webhook": {
+      "main": [
+        [
+          {
+            "node": "Payment Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment Completed": {
+      "main": [
+        [
+          {
+            "node": "Extract Booking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acknowledge Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Booking": {
+      "main": [
+        [
+          {
+            "node": "Mark Paid in Bokun",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Paid in Bokun": {
+      "main": [
+        [
+          {
+            "node": "Booking Paid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Paid": {
+      "main": [
+        [
+          {
+            "node": "Send to Dispatch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Dispatch": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

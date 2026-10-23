@@ -1,0 +1,541 @@
+{
+  "name": "Hidden Gems Travel - Part 3 - Driver Dispatch (Python)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hgt-dispatch",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Paid Booking In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "paid-booking-in",
+      "webhookId": "hgt-dispatch-demo"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\nb = py(_input.first().json).get(\"body\") or {}\nmsg = (\n    f\"🛺 NEW TOUR {b.get('booking_ref')}\\n\"\n    f\"{b.get('tour_name')}\\n\"\n    f\"📅 {b.get('date')} {b.get('time')}\\n\"\n    f\"👥 {b.get('people')} people\\n\"\n    f\"🙋 {b.get('customer_name')}\\n\\n\"\n    f\"Who can take it?\"\n)\nreturn [{\"json\": {**b, \"driver_chat_id\": \"YOUR_DRIVERS_CHAT_ID\", \"message\": msg}}]"
+      },
+      "name": "Remember Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "remember-booking"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "BookingRef": "={{ $json.booking_ref }}",
+            "Status": "OPEN",
+            "Driver": "",
+            "Tour": "={{ $json.tour_name }}",
+            "Date": "={{ $json.date }}",
+            "Time": "={{ $json.time }}",
+            "People": "={{ $json.people }}",
+            "Customer": "={{ $json.customer_name }}",
+            "CreatedAt": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Save Job to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        200
+      ],
+      "id": "save-job-to-sheet"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "sendMessage",
+        "chatId": "={{ $('Remember Booking').item.json.driver_chat_id }}",
+        "text": "={{ $('Remember Booking').item.json.message }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Accept",
+                    "additionalFields": {
+                      "callback_data": "=accept|{{ $('Remember Booking').item.json.booking_ref }}"
+                    }
+                  },
+                  {
+                    "text": "❌ Decline",
+                    "additionalFields": {
+                      "callback_data": "=decline|{{ $('Remember Booking').item.json.booking_ref }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "name": "Send Job to Drivers",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        200
+      ],
+      "id": "send-job-to-drivers"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { dispatched: true, booking_ref: $('Remember Booking').item.json.booking_ref } }}",
+        "options": {}
+      },
+      "name": "Dispatch Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        200
+      ],
+      "id": "dispatch-reply"
+    },
+    {
+      "parameters": {
+        "content": "## Part 3A - Send the job to drivers\nPaid booking -> Python builds message -> saved as OPEN in sheet tab 'Jobs' -> Telegram buttons.\nJobs headers: BookingRef | Status | Driver | Tour | Date | Time | People | Customer | CreatedAt",
+        "height": 190,
+        "width": 640
+      },
+      "name": "Note 3A",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "note-3a"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "callback_query",
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "name": "Driver Bot",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        640
+      ],
+      "id": "driver-bot",
+      "webhookId": "hgt-driver-bot-demo"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ !!$json.callback_query }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Button Click",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        640
+      ],
+      "id": "is-button-click"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "name": "Read Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        540
+      ],
+      "id": "read-jobs",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "mode": "runOnceForAllItems",
+        "pythonCode": "def py(x):\n    return x.to_py() if hasattr(x, \"to_py\") else x\n\ncb = py(_(\"Driver Bot\").first().json)[\"callback_query\"]\nrows = [py(i.json) for i in _input.all()]\n\naction, sep, ref = (cb.get(\"data\") or \"\").partition(\"|\")\nfrm = cb[\"from\"]\ndriver = frm.get(\"first_name\", \"driver\") + (f\" (@{frm['username']})\" if frm.get(\"username\") else \"\")\njob = next((r for r in rows if r.get(\"BookingRef\") == ref), None)\n\nif job is None:\n    outcome = \"unknown\"\nelif action == \"decline\":\n    outcome = \"declined\"\nelif str(job.get(\"Status\", \"\")).upper() == \"OPEN\":\n    outcome = \"assigned\"            # first driver to accept wins\nelif job.get(\"Driver\") == driver:\n    outcome = \"already_yours\"\nelse:\n    outcome = \"taken\"\n\nreturn [{\"json\": {\n    \"outcome\": outcome, \"ref\": ref, \"driver\": driver, \"callback_id\": cb[\"id\"],\n    \"chat_id\": cb[\"message\"][\"chat\"][\"id\"], \"message_id\": cb[\"message\"][\"message_id\"],\n}}]"
+      },
+      "name": "Decide Who Gets It",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        540
+      ],
+      "id": "decide-who-gets-it"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.outcome === 'assigned' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Job Assigned",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        540
+      ],
+      "id": "job-assigned"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "BookingRef": "={{ $('Decide Who Gets It').item.json.ref }}",
+            "Status": "ASSIGNED",
+            "Driver": "={{ $('Decide Who Gets It').item.json.driver }}"
+          },
+          "matchingColumns": [
+            "BookingRef"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Update Job Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1100,
+        440
+      ],
+      "id": "update-job-row"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "text": "✅ The job is yours!",
+          "showAlert": false
+        },
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Decide Who Gets It').item.json.callback_id }}"
+      },
+      "name": "Confirm to Driver",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        440
+      ],
+      "id": "confirm-to-driver"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false
+        },
+        "operation": "editMessageText",
+        "chatId": "={{ $('Decide Who Gets It').item.json.chat_id }}",
+        "messageId": "={{ $('Decide Who Gets It').item.json.message_id }}",
+        "text": "={{ '✅ ' + $('Decide Who Gets It').item.json.ref + ' assigned to ' + $('Decide Who Gets It').item.json.driver + '\\nAfter the tour: /cash ' + $('Decide Who Gets It').item.json.ref + ' AMOUNT  or  /card ' + $('Decide Who Gets It').item.json.ref + ' AMOUNT' }}"
+      },
+      "name": "Update Group Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        440
+      ],
+      "id": "update-group-message"
+    },
+    {
+      "parameters": {
+        "additionalFields": {
+          "text": "={{ { declined:'OK, job skipped.', taken:'Sorry, another driver already took this job.', already_yours:'This job is already yours.', unknown:'Booking not found.' }[$('Decide Who Gets It').item.json.outcome] }}",
+          "showAlert": true
+        },
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Decide Who Gets It').item.json.callback_id }}"
+      },
+      "name": "Tell Driver Why Not",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        660
+      ],
+      "id": "tell-driver-why-not"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/hgt-ledger",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { chat_id: $json.message.chat.id, driver: $json.message.from.first_name + ($json.message.from.username ? ' (@' + $json.message.from.username + ')' : ''), text: $json.message.text } }}",
+        "options": {}
+      },
+      "name": "Forward to Ledger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        800
+      ],
+      "id": "forward-to-ledger"
+    },
+    {
+      "parameters": {
+        "content": "## Part 3B - Drivers press buttons\nOne Telegram bot = one trigger. Button clicks -> assignment (state kept in 'Jobs' sheet). Typed commands -> forwarded to Part 4.",
+        "height": 170,
+        "width": 520
+      },
+      "name": "Note 3B",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "id": "note-3b"
+    }
+  ],
+  "connections": {
+    "Paid Booking In": {
+      "main": [
+        [
+          {
+            "node": "Remember Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember Booking": {
+      "main": [
+        [
+          {
+            "node": "Save Job to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Job to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Send Job to Drivers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Job to Drivers": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Driver Bot": {
+      "main": [
+        [
+          {
+            "node": "Is Button Click",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Button Click": {
+      "main": [
+        [
+          {
+            "node": "Read Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Forward to Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Jobs": {
+      "main": [
+        [
+          {
+            "node": "Decide Who Gets It",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Who Gets It": {
+      "main": [
+        [
+          {
+            "node": "Job Assigned",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Assigned": {
+      "main": [
+        [
+          {
+            "node": "Update Job Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tell Driver Why Not",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Job Row": {
+      "main": [
+        [
+          {
+            "node": "Confirm to Driver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm to Driver": {
+      "main": [
+        [
+          {
+            "node": "Update Group Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
