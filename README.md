@@ -1,12 +1,12 @@
 # Hidden Gems Travel - AI Booking, Dispatch and Cash-Ledger Automation
 
-An end-to-end automation for a small tour company, built with **n8n** and **Python**. A customer chats with an AI agent in their own language, gets a booking and a payment link, a driver is assigned through chat buttons, and on-site payments land in a Google Sheet ledger. A dedicated error handler emails the owner with the cause and troubleshooting steps whenever something breaks.
+An end-to-end automation I built for a small tour company this is just a demo, built with **n8n** and **Python**. A customer chats with an AI agent in their own language, gets a booking and a payment link, a driver is assigned through chat buttons, and on-site payments land in a Google Sheet ledger. A dedicated error handler emails the owner with the cause and troubleshooting steps whenever something breaks.
 
 > **About this project:** This is a **demo project** I built to show how I would solve this kind of problem. It is based on a real-world brief for a tour operator (AI agent, booking system, payments, driver dispatch, cash ledger), but it is **not a delivered client system**. The company, tours, customers, prices and sheet data are all fictional or randomly generated. Bokun and Stripe run in a **demo mode** with mocked responses until real API keys are added.
 
 ## Demo video
 
-[`docs/video/hidden-gems-travel-walkthrough.mp4`](docs/video/hidden-gems-travel-walkthrough.mp4) is a 99-second subtitled walkthrough (no audio). Subtitles are also in [`.srt` form](docs/video/hidden-gems-travel-walkthrough.srt).
+[`docs/video/hidden-gems-travel-walkthrough.mp4`](docs/video/hidden-gems-travel-walkthrough.mp4) is a 99-second subtitled walkthrough (no audio).
 
 ## What it does
 
