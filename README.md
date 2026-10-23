@@ -73,14 +73,6 @@ This is the actual HTML produced by the error handler's Python code for a sample
 
 Telegram webhooks need a public HTTPS URL (n8n Cloud, or a tunnel when self-hosting with `WEBHOOK_URL` set).
 
-## Limitations
-
-- Telegram replaces WhatsApp in the demo. WhatsApp needs a verified Meta business account and a provider such as respond.io or Spoki.
-- Bokun endpoints and request bodies are placeholders. Check the signature scheme against Bokun's REST API documentation before using real keys.
-- Stripe webhook signature verification is not implemented yet.
-- The email channel is not implemented.
-- The workflows were generated as JSON and have not been run end to end against live services.
-
 ## Tech
 
 n8n - Python - OpenAI - Stripe - Bokun API (HMAC) - Telegram Bot API - Google Sheets
